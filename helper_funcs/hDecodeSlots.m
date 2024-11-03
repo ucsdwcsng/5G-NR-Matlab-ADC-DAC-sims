@@ -214,8 +214,8 @@ function [eqSlotGrid,refSlotGrid,emissions,eqSym,refSym] = hDecodeSlots(carrier,
         [n_symbs,n_lays,~] = size(pxschHestLow);
         id_mat = eye(n_lays)*18.9;
         tiled_id_mat = permute(repmat(id_mat,[1,1,n_symbs]),[3,1,2]);
-        [eqGridLow,csiLow] = nrEqualizeMMSE(pxschRxLow,tiled_id_mat,noiseEst);
-        % [eqGridLow,csiLow] = nrEqualizeMMSE(pxschRxLow,pxschHestLow,noiseEst);
+        % [eqGridLow,csiLow] = nrEqualizeMMSE(pxschRxLow,tiled_id_mat,noiseEst);
+        [eqGridLow,csiLow] = nrEqualizeMMSE(pxschRxLow,pxschHestLow,noiseEst);
         if evm3GPP
             currentRxGridHigh = rxGridHigh(:, currentSlotIdx*L+(1:L), :);
             currentHestHigh = HestHigh(:, currentSlotIdx*L+(1:L),:,:);

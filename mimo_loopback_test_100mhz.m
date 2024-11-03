@@ -13,9 +13,9 @@ plotEVM = false;
 evm3GPP = false;
 single_user = true;
 enable_artificial_cfo = false;
-plot_spectrum = true;
+plot_spectrum = false;
 carrier_bw = 100; % mhz
-SNR = 15;
+SNR = 10;
 %%
 % Create a waveform generator object,then and generate the waveform.
 % wavegen = hNRReferenceWaveformGenerator(rc);
@@ -38,7 +38,7 @@ if (single_user)
     cfgUL.PUSCH{1}.NumAntennaPorts = 4;
     cfgUL.PUSCH{1}.RVSequence = 0;
     cfgUL.PUSCH{1}.PRBSet = 0:1:272;
-    cfgUL.PUSCH{1}.Modulation = "16QAM";
+    % cfgUL.PUSCH{1}.Modulation = "16QAM";
 else
     carriers = {
     nrSCSCarrierConfig('SubcarrierSpacing',15,'NStartGrid',10,'NSizeGrid',100), ...
@@ -96,7 +96,7 @@ rxWaveform = zeros(size(txWaveform));
 rxWaveform(:,1) = txWaveform(:,1); 
 rxWaveform(:,2) = txWaveform(:,2);
 rxWaveform(:,3) = txWaveform(:,3); 
-rxWaveform(:,4) = txWaveform(:,4)/sqrt(2); 
+rxWaveform(:,4) = txWaveform(:,4); 
 
 
 noise_sigma = sqrt(0.5*10^(-(SNR+11)/10)); % +11 normalizes
@@ -210,11 +210,11 @@ evm_snr_per_stream = mean(evm_abs,1)
 toc
 
 %%
-const_ref = complex(refSym{1});
-const_equalized = complex(eqSym{1});
-
-figure
-scatter(real(const_equalized),imag(const_equalized))
+% const_ref = complex(refSym{1});
+% const_equalized = complex(eqSym{1});
+% 
+% figure
+% scatter(real(const_equalized),imag(const_equalized))
 % figure()
 % subplot(2,1,1)
 % hold on

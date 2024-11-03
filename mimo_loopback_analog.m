@@ -15,7 +15,7 @@ single_user = true;
 enable_artificial_cfo = false;
 plot_spectrum = false;
 carrier_bw = 100; % mhz
-SNR = 40;
+SNR = 20;
 %%
 % Create a waveform generator object,then and generate the waveform.
 % wavegen = hNRReferenceWaveformGenerator(rc);
@@ -83,6 +83,7 @@ analog_factor = 40;
 adc_oversamp_factor = 4;
 
 rxWaveform_analog_afterLNA_nonoise = resample(txWaveform,analog_factor,1);
+rxWaveform_analog_afterLNA_nonoise(:,1) = rxWaveform_analog_afterLNA_nonoise(:,1)*sqrt(2); 
 noise_sigma = sqrt(0.5*10^(-(SNR+4)/10)); % +6 normalizes
 rx_waveform_size = size(rxWaveform_analog_afterLNA_nonoise);
 complex_noise =  noise_sigma*(randn(rx_waveform_size)+1j*randn(rx_waveform_size));
@@ -92,6 +93,7 @@ rxWaveform_ADC_Samples_raw = rxWaveform_analog_afterLNA(1:(analog_factor/adc_ove
 rxWaveform_ADC_decim = lowpass(rxWaveform_ADC_Samples_raw,0.25);
 % rxWaveform_ADC_decim = rxWaveform_ADC_Samples_raw;
 rxWaveform  = rxWaveform_ADC_decim(1:4:end,:);
+% rxWaveform(:,1) = 
 % rxWaveform = resample(rxWaveform_ADC_Samples_raw,1,adc_oversamp_factor);
 % rxWaveform = resample(rxWaveform_analog_afterLNA,1,analog_factor);
 
