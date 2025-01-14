@@ -111,6 +111,18 @@ function [varargout] = hNRFrequencyOffset(operationType,varargin)
 % Copyright 2022 The MathWorks, Inc.
 
     switch operationType
+        case 'coarseFOwoffset'
+            carrier = varargin{1};
+            waveform = varargin{2};
+            sampleRate = varargin{3};
+            
+            ofdmInfo = nrOFDMInfo(carrier);
+            nLayers = size(waveform,2);
+            overSamplingFactor = sampleRate/sum(ofdmInfo.SymbolLengths)/1000;
+            waveformZeroPadded =  [waveform; zeros(round(ofdmInfo.Nfft*overSamplingFactor),nLayers)];
+            
+            [varargout{1},varargout{2}] = frequencyOffsetCoarse_withtime(carrier,waveformZeroPadded,sampleRate);
+            
         case 'coarseFO'
             carrier = varargin{1};
             waveform = varargin{2};
@@ -230,6 +242,198 @@ function [varargout] = hNRFrequencyOffset(operationType,varargin)
             error('Unsupported operation.');
     end
 end
+
+function [foffset,toffset_est] = frequencyOffsetCoarse_withtime(carrier,waveform,varargin)
+%    FOFFSET = frequencyOffsetCoarse('COARSE',CARRIER,WAVEFORM,SAMPLERATE)
+%    estimates the frequency offset FOFFSET taking into account the
+%    sample rate SAMPLERATE
+%
+%    FOFFSET =
+%    frequencyOffsetCoarse('COARSE',CARRIER,WAVEFORM,SAMPLERATE,TOFFSET)
+%    estimates the frequency offset FOFFSET taking into account the sample
+%    rate SAMPLERATE and timing offset TOFFSET
+
+    overSamplingFactor = 1;
+    % toffset = [];
+    foffset = 0;
+    ofdmInfo = nrOFDMInfo(carrier);
+
+    if nargin >= 3
+        sampleRate  = varargin{1};
+        overSamplingFactor = sampleRate/1000/sum(ofdmInfo.SymbolLengths);
+    end
+    if overSamplingFactor ~= 1
+        waveform = resample(waveform,sum(ofdmInfo.SymbolLengths)*1000,sampleRate);
+    end
+
+    % Get the number of samples per FFT, FFT duration, number of subframes,
+    % number of slots, and the number of samples per slot.
+    nFFT = ofdmInfo.Nfft;
+    tFFT = 1/(carrier.SubcarrierSpacing*1e3);
+    samplesPerSubframe = ofdmInfo.SampleRate/1000;
+    samplesPerSlot = samplesPerSubframe/ofdmInfo.SlotsPerSubframe;
+    L = ofdmInfo.SymbolsPerSlot;
+    grid = nrOFDMDemodulate(carrier,waveform);%,'SampleRate',sampleRate);
+    nSlots = floor(size(grid,2)/L);
+    nSubframes = 0;
+
+    % Ensure the waveform spans at least one slot plus FFT length
+    if size(waveform,1) < (samplesPerSlot+nFFT)
+        foffset = 0;
+        warning('The input waveform must span at least 1 slot plus the length of the FFT');
+        return;
+    end
+
+    % Derive the length of the cyclic prefixes (CP)s. The smaller CP length
+    % is used for correlation with waveform. For sake of processing
+    % convenience, the larger CP length is not used as it is present for a
+    % relatively lesser number of symbols in a slot.
+    cpLengths = ofdmInfo.CyclicPrefixLengths;
+    cpLength = cpLengths(2);
+
+    % Use peakCorr as a comparator for antenna correlation selection
+    % Loop over each receive antenna
+    peakCorr = -1;
+    for i = 1:size(waveform,2)
+
+        % Form two correlator inputs, the second delayed from
+        % the first by nFFT.
+        corrInp1 = waveform(1:end-nFFT,i);
+        corrInp2 = waveform(1+nFFT:end,i);
+
+        % Conjugate multiply the inputs and integrate over the CP length
+        cpCorrRaw = corrInp1.*conj(corrInp2);
+        cpcorr = conv(cpCorrRaw,ones(cpLength,1));
+        cpcorr = cpcorr(cpLength:end);
+
+        % Combine the correlation estimates, if needed, into a single subframe
+        cpcorravg = cpcorr;
+        if nSubframes > 0
+            % Ensure cpcorravg spans a multiple of subframe length before
+            % combining into a single subframe (zero pad if needed)
+            sfZeroPadLen = length(cpcorr) - nSubframes*samplesPerSubframe;
+            if sfZeroPadLen > 0 
+               sfZeroPadLen = samplesPerSubframe-sfZeroPadLen;
+            end
+            cpcorravg = [cpcorr; zeros(sfZeroPadLen,1)];
+            cpcorravg = sum(reshape(cpcorravg,samplesPerSubframe,length(cpcorravg)/samplesPerSubframe),2);
+        end
+
+        % Store absolute value of the averaged output for further
+        % processing
+        cpcorrmag = abs(cpcorravg);
+
+        nSlotsToProcess = min(nSlots,ofdmInfo.SlotsPerSubframe);
+        currentslotOffset = 0;
+        cycShiftTot = [];
+        sampleCount = 0;
+        tmpSlotIdx = carrier.NSlot;
+
+        % Select and process the antenna with the highest correlation peak
+        % This is done to improve the estimation accuracy
+        if (max(cpcorrmag) > peakCorr)
+
+            % Update the peak value with this antenna
+            peakCorr = max(cpcorrmag);
+
+            % Loop over each slot in subframe
+            % for sIdx = 1:nSlotsToProcess
+
+            % Extract the correlation samples for current slot
+            slotIdxInSf = mod(tmpSlotIdx,ofdmInfo.SlotsPerSubframe);
+            samplesPerSlot = sum(ofdmInfo.SymbolLengths(slotIdxInSf*ofdmInfo.SymbolsPerSlot + (1:ofdmInfo.SymbolsPerSlot)));
+            cpcorrmagSlot = cpcorrmag(currentslotOffset(sIdx,1) + 1:currentslotOffset(sIdx,1) + samplesPerSlot);
+
+            % For this slot, get the CP lengths
+            symIdx = slotIdxInSf*ofdmInfo.SymbolsPerSlot + (1:ofdmInfo.SymbolsPerSlot);
+            cpLengths = (ofdmInfo.CyclicPrefixLengths(symIdx));
+
+            % Compute the number of samples through a slot where
+            % each of the OFDM symbols start
+            symbolStarts = cumsum(cpLengths+nFFT);
+            symbolStarts0 = [0 symbolStarts(1:end-1)];
+
+            % Extract the timing of the peak correlation relative to
+            % the start of the nearest OFDM symbol in the slot. Choose
+            % the closest candidate relative to any symbol start
+            idx = 1:length(cpcorrmagSlot);
+            tmpCycshift = idx(cpcorrmagSlot==max(cpcorrmagSlot));
+            tmpCycshift = tmpCycshift(1);
+            tail = samplesPerSlot-symbolStarts0(end);
+            if tmpCycshift > symbolStarts0(end)
+                if (tmpCycshift-symbolStarts0(end)) > tail/2
+                    tmpCycshift = mod(tmpCycshift+tail,samplesPerSlot)-tail;
+                end
+            end
+            candidates = -symbolStarts0+tmpCycshift;
+            candidateidxs = 1:length(symbolStarts0);
+            pos=candidateidxs(abs(candidates) == min(abs(candidates)));
+
+            % Locate candidate postion for the chosen peak
+            cycshift = min(candidates(pos));
+
+            % If provided as an input, override cycshift with toffset
+            % if ~isempty(toffset)
+            %     cycshift = toffset;
+            % end
+
+            % Store the cyclic shift across each slot in the
+            % subframe
+            cycShiftTot = [cycShiftTot cycshift];
+            tmpSlotIdx = tmpSlotIdx + 1;
+            sampleCount  = sampleCount + samplesPerSlot;
+            currentslotOffset = [currentslotOffset; sampleCount];
+            % end
+            
+            
+            
+            % Use the median cyclic shift across each slot for better
+            % accuracy
+             cycShift = fix(median(cycShiftTot));
+            
+             toffset_est = cycShift;
+            % Form a vector of the locations of all OFDM symbols in the
+            % original waveform.
+            freqIdxs=[];
+            prevSlotSampleCount = 0;
+
+            for l=0:nSlots-1
+                currentslotIdxInSf = mod(carrier.NSlot + l,ofdmInfo.SlotsPerSubframe);
+                symIdx = currentslotIdxInSf*ofdmInfo.SymbolsPerSlot + (1:ofdmInfo.SymbolsPerSlot);
+                cpLengths = (ofdmInfo.CyclicPrefixLengths(symIdx));
+                symbolStarts = cumsum(cpLengths+nFFT);
+                samplesInSlot = sum(ofdmInfo.SymbolLengths(currentslotIdxInSf*ofdmInfo.SymbolsPerSlot + (1:ofdmInfo.SymbolsPerSlot)));
+                freqIdxs = [freqIdxs (prevSlotSampleCount + symbolStarts)];
+                prevSlotSampleCount = prevSlotSampleCount + samplesInSlot;
+            end
+            freqIdxs(end) = [];
+
+            estimates = [];
+            cpLengths = ofdmInfo.CyclicPrefixLengths;
+
+            % Form a vector of all samples of the correlator input,
+            % centered around the middle of the cyclic prefix in each
+            % symbol
+            cpLength = cpLengths(2)/2;
+            maxIdx = max(cycShift+freqIdxs+cpLength-1-fix(cpLength/4));
+            if maxIdx > length(cpCorrRaw)
+                estimates = 0;
+            else
+                for add=(fix(cpLength/2):fix(cpLength)-1) - fix(cpLength/4)
+                    estimates = [estimates; cpCorrRaw(cycShift+freqIdxs+add)];
+                end
+            end
+
+            % Average the estimates, take the angle and compute the
+            % corresponding frequency offset.
+            foffset = -angle(mean(estimates))/(2*pi*tFFT);
+        else
+        %     disp("CP correlation not high enough")
+        % end
+    end
+    end
+end
+
 
 function [foffset] = frequencyOffsetCoarse(carrier,waveform,varargin)
 %    FOFFSET = frequencyOffsetCoarse('COARSE',CARRIER,WAVEFORM,SAMPLERATE)
