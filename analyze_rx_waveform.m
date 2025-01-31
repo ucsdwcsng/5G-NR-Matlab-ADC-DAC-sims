@@ -5,7 +5,7 @@ num_frames = 1;
 SCS = 30;
 grid_size = 273; % num RBs, 273 corr
 % grid_size = 52; % num RBs, 273 corr
-
+    
 num_layers = 1;
 num_tx_ant = 1;
 num_rx_ant = 1;

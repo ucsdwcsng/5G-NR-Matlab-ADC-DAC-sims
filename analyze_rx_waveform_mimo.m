@@ -8,9 +8,9 @@ grid_size = 273; % num RBs, 273 corr 100 mhz
 % grid_size = 72; % num RBs, 273 corr
 % grid_size = 52; % num RBs, 273 corr 30 mhz
 
-num_layers = 4;
-num_tx_ant = 4;
-num_rx_ant = 4;
+num_layers = 2;
+num_tx_ant = 2;
+num_rx_ant = 2;
 
 num_slots_to_gen = 1;
 % num_zeros_to_append = 10000;
@@ -41,10 +41,10 @@ noise = N0*randn(size(tx_samples_repeated_with_zeros),"like",tx_samples_repeated
 phase_offset_between_antennas = 60; % degrees
 
 tx_samples_with_artf_channel = tx_samples_repeated_with_zeros;
-tx_samples_with_artf_channel(:,1) = tx_samples_repeated_with_zeros(:,1)*exp(1j*(pi/180)*phase_offset_between_antennas);
-tx_samples_with_artf_channel(:,2) = tx_samples_repeated_with_zeros(:,2);
-tx_samples_with_artf_channel(:,3) = tx_samples_repeated_with_zeros(:,3)*exp(1j*(pi/180)*phase_offset_between_antennas);
-tx_samples_with_artf_channel(:,4) = tx_samples_repeated_with_zeros(:,4);
+% tx_samples_with_artf_channel(:,1) = tx_samples_repeated_with_zeros(:,1)*exp(1j*(pi/180)*phase_offset_between_antennas);
+% tx_samples_with_artf_channel(:,2) = tx_samples_repeated_with_zeros(:,2);
+% tx_samples_with_artf_channel(:,3) = tx_samples_repeated_with_zeros(:,3)*exp(1j*(pi/180)*phase_offset_between_antennas);
+% tx_samples_with_artf_channel(:,4) = tx_samples_repeated_with_zeros(:,4);
 
 rxWaveform = tx_samples_with_artf_channel+noise;
 enable_artificial_cfo = false;
